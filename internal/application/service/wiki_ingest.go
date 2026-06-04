@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Tencent/WeKnora/internal/agent"
+	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/searchutil"
@@ -202,6 +203,7 @@ type wikiIngestService struct {
 	pendingRepo    interfaces.TaskPendingOpsRepository
 	deadLetterRepo interfaces.TaskDeadLetterRepository
 	redisClient    *redis.Client // nil in Lite mode (no Redis)
+	config         *config.Config
 	// spanTracker lets per-document map work surface as a
 	// postprocess.wiki subspan in the knowledge trace tree. Async
 	// batch design means we look up the parent attempt by knowledge
@@ -228,6 +230,7 @@ func NewWikiIngestService(
 	deadLetterRepo interfaces.TaskDeadLetterRepository,
 	redisClient *redis.Client,
 	spanTracker SpanTracker,
+	appConfig *config.Config,
 ) interfaces.TaskHandler {
 	svc := &wikiIngestService{
 		wikiService:    wikiService,
@@ -242,6 +245,7 @@ func NewWikiIngestService(
 		deadLetterRepo: deadLetterRepo,
 		redisClient:    redisClient,
 		spanTracker:    spanTracker,
+		config:         appConfig,
 	}
 	return svc
 }
@@ -1705,10 +1709,7 @@ func (s *wikiIngestService) generateWithTemplate(ctx context.Context, chatModel 
 	for attempt := 1; attempt <= wikiLLMMaxAttempts; attempt++ {
 		response, err := chatModel.Chat(ctx, []chat.Message{
 			{Role: "user", Content: prompt},
-		}, &chat.ChatOptions{
-			Temperature: 0.3,
-			Thinking:    &thinking,
-		})
+		}, s.wikiChatOptions(&thinking))
 		if err == nil {
 			return response.Content, nil
 		}
@@ -1734,6 +1735,25 @@ func (s *wikiIngestService) generateWithTemplate(ctx context.Context, chatModel 
 		}
 	}
 	return "", fmt.Errorf("LLM call failed after %d attempts: %w", wikiLLMMaxAttempts, lastErr)
+}
+
+func (s *wikiIngestService) wikiChatOptions(thinking *bool) *chat.ChatOptions {
+	opts := &chat.ChatOptions{
+		Temperature: 0.3,
+		Thinking:    thinking,
+	}
+	if s == nil || s.config == nil || s.config.Conversation == nil || s.config.Conversation.Summary == nil {
+		return opts
+	}
+
+	summary := s.config.Conversation.Summary
+	if summary.MaxTokens > 0 {
+		opts.MaxTokens = summary.MaxTokens
+	}
+	if summary.MaxCompletionTokens > 0 {
+		opts.MaxCompletionTokens = summary.MaxCompletionTokens
+	}
+	return opts
 }
 
 // isTransientLLMError reports whether an error from the chat provider

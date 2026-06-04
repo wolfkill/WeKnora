@@ -1,10 +1,100 @@
 package service
 
 import (
+	"context"
 	"testing"
 
+	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/types"
 )
+
+type wikiIngestOptionCaptureChat struct {
+	opts *chat.ChatOptions
+}
+
+func (m *wikiIngestOptionCaptureChat) Chat(
+	_ context.Context,
+	_ []chat.Message,
+	opts *chat.ChatOptions,
+) (*types.ChatResponse, error) {
+	if opts != nil {
+		copied := *opts
+		m.opts = &copied
+	}
+	return &types.ChatResponse{Content: "ok"}, nil
+}
+
+func (m *wikiIngestOptionCaptureChat) ChatStream(
+	context.Context,
+	[]chat.Message,
+	*chat.ChatOptions,
+) (<-chan types.StreamResponse, error) {
+	return nil, nil
+}
+
+func (m *wikiIngestOptionCaptureChat) GetModelName() string { return "capture" }
+func (m *wikiIngestOptionCaptureChat) GetModelID() string   { return "capture" }
+
+func TestGenerateWithTemplateUsesConfiguredTokenLimits(t *testing.T) {
+	model := &wikiIngestOptionCaptureChat{}
+	svc := &wikiIngestService{
+		config: &config.Config{
+			Conversation: &config.ConversationConfig{
+				Summary: &config.SummaryConfig{
+					MaxTokens:           3072,
+					MaxCompletionTokens: 4096,
+				},
+			},
+		},
+	}
+
+	content, err := svc.generateWithTemplate(
+		context.Background(),
+		model,
+		"hello {{.Name}}",
+		map[string]string{"Name": "wiki"},
+	)
+	if err != nil {
+		t.Fatalf("generateWithTemplate returned error: %v", err)
+	}
+	if content != "ok" {
+		t.Fatalf("unexpected content: got %q want %q", content, "ok")
+	}
+	if model.opts == nil {
+		t.Fatal("chat options were not captured")
+	}
+	if model.opts.MaxTokens != 3072 {
+		t.Fatalf("MaxTokens = %d, want 3072", model.opts.MaxTokens)
+	}
+	if model.opts.MaxCompletionTokens != 4096 {
+		t.Fatalf("MaxCompletionTokens = %d, want 4096", model.opts.MaxCompletionTokens)
+	}
+}
+
+func TestGenerateWithTemplateLeavesTokenLimitsUnsetWithoutConfig(t *testing.T) {
+	model := &wikiIngestOptionCaptureChat{}
+	svc := &wikiIngestService{}
+
+	_, err := svc.generateWithTemplate(
+		context.Background(),
+		model,
+		"hello",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("generateWithTemplate returned error: %v", err)
+	}
+	if model.opts == nil {
+		t.Fatal("chat options were not captured")
+	}
+	if model.opts.MaxTokens != 0 {
+		t.Fatalf("MaxTokens = %d, want 0", model.opts.MaxTokens)
+	}
+	if model.opts.MaxCompletionTokens != 0 {
+		t.Fatalf("MaxCompletionTokens = %d, want 0", model.opts.MaxCompletionTokens)
+	}
+}
 
 func TestSlugify(t *testing.T) {
 	tests := []struct {
@@ -19,8 +109,8 @@ func TestSlugify(t *testing.T) {
 		{"Special!@#Chars", "specialchars"},
 		{"CamelCase", "camelcase"},
 		{"", ""},
-		{"a/b/c", "a/b/c"},            // preserve slashes for hierarchical slugs
-		{"中文标题", "中文标题"},          // preserve CJK
+		{"a/b/c", "a/b/c"},               // preserve slashes for hierarchical slugs
+		{"中文标题", "中文标题"},                 // preserve CJK
 		{"Mix 中英文 Test", "mix-中英文-test"}, // mixed
 	}
 

@@ -3,6 +3,7 @@ package docparser
 import (
 	"context"
 	"encoding/csv"
+	"encoding/xml"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -57,7 +58,7 @@ func (b *SimpleFormatReader) Read(_ context.Context, req *types.ReadRequest) (*t
 	case ft == "md" || ft == "markdown":
 		return &types.ReadResult{MarkdownContent: string(req.FileContent)}, nil
 	case ft == "txt" || ft == "text":
-		return &types.ReadResult{MarkdownContent: string(req.FileContent)}, nil
+		return textToResult(req.FileContent), nil
 	case ft == "csv":
 		md, err := csvToMarkdown(req.FileContent)
 		if err != nil {
@@ -77,6 +78,36 @@ func (b *SimpleFormatReader) Read(_ context.Context, req *types.ReadRequest) (*t
 	default:
 		return nil, fmt.Errorf("unsupported simple format: %s", ft)
 	}
+}
+
+func textToResult(data []byte) *types.ReadResult {
+	content := string(data)
+	if isSVGXML(content) {
+		return &types.ReadResult{MarkdownContent: svgTextToMarkdown(content)}
+	}
+	return &types.ReadResult{MarkdownContent: content}
+}
+
+func isSVGXML(content string) bool {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return false
+	}
+	decoder := xml.NewDecoder(strings.NewReader(trimmed))
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return false
+		}
+		if start, ok := token.(xml.StartElement); ok {
+			return strings.EqualFold(start.Name.Local, "svg")
+		}
+	}
+}
+
+func svgTextToMarkdown(content string) string {
+	trimmed := strings.TrimSpace(content)
+	return "SVG XML markup\n\nThis text file contains SVG source markup. The original markup is preserved below.\n\n```svg\n" + trimmed + "\n```"
 }
 
 // imageToResult wraps a standalone image as a markdown image reference with

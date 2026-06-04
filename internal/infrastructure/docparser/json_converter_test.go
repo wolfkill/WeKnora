@@ -506,13 +506,13 @@ func TestJsonToMarkdown_RealisticLargeNestedConfig(t *testing.T) {
 	rules := make(map[string]interface{})
 	for i := 0; i < 30; i++ {
 		rules[fmt.Sprintf("rule_%02d", i)] = map[string]interface{}{
-			"pattern": strings.Repeat("pattern", 10),
-			"action":  "allow",
+			"pattern":  strings.Repeat("pattern", 10),
+			"action":   "allow",
 			"priority": i,
 		}
 	}
 	config := map[string]interface{}{
-		"version": "3.0",
+		"version":  "3.0",
 		"metadata": map[string]interface{}{"author": "admin", "updated": "2026-03-24"},
 		"firewall": map[string]interface{}{
 			"enabled": true,
@@ -578,6 +578,51 @@ func TestSimpleFormatReader_JSON_Invalid(t *testing.T) {
 		check("error mentions 'json'",
 			err != nil && strings.Contains(strings.ToLower(err.Error()), "json")),
 	})
+}
+
+func TestSimpleFormatReader_TXT_SVGContentIsPreservedAsCode(t *testing.T) {
+	reader := &SimpleFormatReader{}
+	input := `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><path fill="currentColor" d="M49.318 18.176c2.52-2.52 6.829-.736 6.829 2.828v38.343z"/></svg>`
+	req := &types.ReadRequest{
+		FileName:    "volume-muted.txt",
+		FileType:    "txt",
+		FileContent: []byte(input),
+	}
+
+	result, err := reader.Read(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Read returned error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("Read returned nil result")
+	}
+	if !strings.Contains(result.MarkdownContent, "SVG XML markup") {
+		t.Fatalf("expected SVG context in markdown content, got:\n%s", result.MarkdownContent)
+	}
+	if !strings.Contains(result.MarkdownContent, "```svg\n"+input+"\n```") {
+		t.Fatalf("expected original SVG in a fenced svg code block, got:\n%s", result.MarkdownContent)
+	}
+}
+
+func TestSimpleFormatReader_TXT_NonSVGContentUnchanged(t *testing.T) {
+	reader := &SimpleFormatReader{}
+	input := "plain notes\nwith two lines"
+	req := &types.ReadRequest{
+		FileName:    "notes.txt",
+		FileType:    "txt",
+		FileContent: []byte(input),
+	}
+
+	result, err := reader.Read(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Read returned error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("Read returned nil result")
+	}
+	if result.MarkdownContent != input {
+		t.Fatalf("plain txt content changed: got %q want %q", result.MarkdownContent, input)
+	}
 }
 
 func TestIsSimpleFormat_JSON(t *testing.T) {
