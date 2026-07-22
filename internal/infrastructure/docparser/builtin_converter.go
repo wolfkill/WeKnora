@@ -99,6 +99,9 @@ func isSVGXML(content string) bool {
 		if err != nil {
 			return false
 		}
+		if charData, ok := token.(xml.CharData); ok && strings.TrimSpace(string(charData)) != "" {
+			return false
+		}
 		if start, ok := token.(xml.StartElement); ok {
 			return strings.EqualFold(start.Name.Local, "svg")
 		}

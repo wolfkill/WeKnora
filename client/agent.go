@@ -133,7 +133,7 @@ func (c *Client) processAgentSSEStream(reader io.Reader, callback AgentEventCall
 
 		// Process lines with data: prefix
 		if strings.HasPrefix(line, "data:") {
-			dataBuffer = strings.TrimSpace(line[5:]) // Remove "data:" prefix
+			dataBuffer = appendSSEDataLine(dataBuffer, line)
 		}
 	}
 

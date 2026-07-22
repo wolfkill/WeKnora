@@ -112,8 +112,26 @@ func (c *OllamaChat) buildChatRequest(messages []Message, opts *ChatOptions, isS
 			chatReq.Tools = c.toolFrom(opts.Tools)
 		}
 	}
+	if shouldDefaultQwen3NextReasoning(c.modelName, chatReq.Think) {
+		chatReq.Think = &ollamaapi.ThinkValue{Value: "medium"}
+	}
 
 	return chatReq
+}
+
+func shouldDefaultQwen3NextReasoning(modelName string, think *ollamaapi.ThinkValue) bool {
+	if !isQwen3NextModel(modelName) {
+		return false
+	}
+	if think == nil || think.Value == nil {
+		return true
+	}
+	value, ok := think.Value.(bool)
+	return ok && !value
+}
+
+func isQwen3NextModel(modelName string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "qwen3-next")
 }
 
 // Chat 进行非流式聊天

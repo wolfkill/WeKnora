@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -29,6 +30,26 @@ func TestUpdateKBRequest_DoesNotAcceptVectorStoreID(t *testing.T) {
 		// straight into the service Update path).
 		assertNoVectorStoreIDField(t, reflect.TypeOf(types.KnowledgeBaseConfig{}))
 	})
+}
+
+func TestUpdateKnowledgeBaseRequestAcceptsVLMConfig(t *testing.T) {
+	var req UpdateKnowledgeBaseRequest
+	err := json.Unmarshal([]byte(`{
+		"name": "kb",
+		"vlm_config": {
+			"enabled": true,
+			"model_id": "vlm-model"
+		}
+	}`), &req)
+	if err != nil {
+		t.Fatalf("unmarshal update request: %v", err)
+	}
+	if req.VLMConfig == nil {
+		t.Fatal("expected vlm_config to be accepted by update request")
+	}
+	if !req.VLMConfig.Enabled || req.VLMConfig.ModelID != "vlm-model" {
+		t.Fatalf("unexpected VLM config: %+v", req.VLMConfig)
+	}
 }
 
 // assertNoVectorStoreIDField walks the visible fields of t (including embedded

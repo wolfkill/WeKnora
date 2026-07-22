@@ -329,7 +329,7 @@ func (c *Client) KnowledgeQAStream(
 
 		// Process lines with data: prefix
 		if strings.HasPrefix(line, "data:") {
-			dataBuffer = line[5:] // Remove "data:" prefix
+			dataBuffer = appendSSEDataLine(dataBuffer, line)
 		}
 	}
 
@@ -397,7 +397,7 @@ func (c *Client) ContinueStream(
 
 		// Process lines with data: prefix
 		if strings.HasPrefix(line, "data:") {
-			dataBuffer = line[5:] // Remove "data:" prefix
+			dataBuffer = appendSSEDataLine(dataBuffer, line)
 		}
 	}
 

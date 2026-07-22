@@ -149,10 +149,17 @@ func (r *sessionRepository) QueryPaged(
 		}
 	}
 	applyAgent := func(db *gorm.DB) *gorm.DB {
-		if q.AgentID != "" {
-			return db.Where("ics.agent_id = ?", q.AgentID)
+		agentID := strings.TrimSpace(q.AgentID)
+		if agentID == "" {
+			return db
 		}
-		return db
+		if isPostgres {
+			return db.Where("(ics.agent_id = ? OR s.agent_config->>'agent_id' = ?)", agentID, agentID)
+		}
+		return db.Where(
+			"(ics.agent_id = ? OR (json_valid(s.agent_config) AND json_extract(s.agent_config, '$.agent_id') = ?))",
+			agentID, agentID,
+		)
 	}
 
 	// Count distinct sessions to guard against fan-out from the join.

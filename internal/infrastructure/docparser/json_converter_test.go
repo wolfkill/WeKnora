@@ -625,6 +625,27 @@ func TestSimpleFormatReader_TXT_NonSVGContentUnchanged(t *testing.T) {
 	}
 }
 
+func TestSimpleFormatReader_TXT_InlineSVGTextIsUnchanged(t *testing.T) {
+	reader := &SimpleFormatReader{}
+	input := `plain notes before svg <svg viewBox="0 0 10 10"></svg>`
+	req := &types.ReadRequest{
+		FileName:    "notes.txt",
+		FileType:    "txt",
+		FileContent: []byte(input),
+	}
+
+	result, err := reader.Read(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Read returned error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("Read returned nil result")
+	}
+	if result.MarkdownContent != input {
+		t.Fatalf("inline SVG text changed: got %q want %q", result.MarkdownContent, input)
+	}
+}
+
 func TestIsSimpleFormat_JSON(t *testing.T) {
 	cases := []struct {
 		input string

@@ -98,7 +98,8 @@ func (r *fakeKBRepo) ListKnowledgeBases(_ context.Context) ([]*types.KnowledgeBa
 func (r *fakeKBRepo) ListKnowledgeBasesByTenantID(_ context.Context, _ uint64) ([]*types.KnowledgeBase, error) {
 	return nil, nil
 }
-func (r *fakeKBRepo) UpdateKnowledgeBase(_ context.Context, _ *types.KnowledgeBase) error {
+func (r *fakeKBRepo) UpdateKnowledgeBase(_ context.Context, kb *types.KnowledgeBase) error {
+	r.rows[kb.ID] = kb
 	return nil
 }
 func (r *fakeKBRepo) DeleteKnowledgeBase(_ context.Context, _ string) error { return nil }
@@ -140,6 +141,38 @@ func ctxWithTenantStorage(tenantID uint64, defaultProvider string) context.Conte
 		},
 	}
 	return context.WithValue(ctx, types.TenantInfoContextKey, tenant)
+}
+
+func TestUpdateKnowledgeBase_UpdatesVLMConfigWhenProvided(t *testing.T) {
+	repo := newFakeKBRepo()
+	repo.rows["kb-1"] = &types.KnowledgeBase{
+		ID:          "kb-1",
+		Name:        "old",
+		Description: "old desc",
+		VLMConfig: types.VLMConfig{
+			Enabled: false,
+			ModelID: "",
+		},
+	}
+	svc := newPR3KBService(repo, &fakeRegistry{}, &fakeOwnership{})
+
+	updated, err := svc.UpdateKnowledgeBase(
+		context.Background(),
+		"kb-1",
+		"new",
+		"new desc",
+		nil,
+		&types.VLMConfig{
+			Enabled: true,
+			ModelID: "vlm-model",
+		},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Equal(t, "new", updated.Name)
+	assert.True(t, updated.VLMConfig.Enabled)
+	assert.Equal(t, "vlm-model", updated.VLMConfig.ModelID)
+	assert.Equal(t, updated.VLMConfig, repo.rows["kb-1"].VLMConfig)
 }
 
 func TestCreateKnowledgeBase_DefaultStorageProviderFromTenant(t *testing.T) {

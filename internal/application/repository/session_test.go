@@ -83,6 +83,68 @@ func TestSessionRepositoryGetAndListHonorUserScope(t *testing.T) {
 	require.ElementsMatch(t, []string{bobSession.ID, legacySession.ID}, sessionIDsForTest(paged))
 }
 
+func TestSessionRepositoryQueryPagedFiltersWebAndIMSessionsByAgentID(t *testing.T) {
+	repo, db := newSessionRepositoryForTest(t)
+	ctx := context.Background()
+	require.NoError(t, db.Exec(`
+		CREATE TABLE im_channel_sessions (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL,
+			platform TEXT,
+			chat_id TEXT,
+			thread_id TEXT,
+			user_id TEXT,
+			agent_id TEXT,
+			im_channel_id TEXT,
+			deleted_at DATETIME
+		)
+	`).Error)
+
+	webSession := &types.Session{
+		TenantID: 1,
+		UserID:   "alice",
+		Title:    "web agent session",
+		LastRequestState: &types.SessionLastRequestState{
+			AgentID:      "agent-1",
+			AgentEnabled: true,
+		},
+	}
+	require.NoError(t, db.Create(webSession).Error)
+	imSession := createSessionForTest(t, db, 1, "alice")
+	otherAgentSession := &types.Session{
+		TenantID: 1,
+		UserID:   "alice",
+		Title:    "other agent session",
+		LastRequestState: &types.SessionLastRequestState{
+			AgentID:      "agent-2",
+			AgentEnabled: true,
+		},
+	}
+	require.NoError(t, db.Create(otherAgentSession).Error)
+	require.NoError(t, db.Exec(`
+		INSERT INTO im_channel_sessions
+			(id, session_id, platform, chat_id, thread_id, user_id, agent_id, im_channel_id)
+		VALUES
+			('im-1', ?, 'wechat', 'chat-1', '', 'alice', 'agent-1', 'channel-1')
+	`, imSession.ID).Error)
+
+	items, total, err := repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1,
+		UserID:   "alice",
+		AgentID:  "agent-1",
+		Page:     1,
+		PageSize: 10,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total)
+
+	gotIDs := make([]string, 0, len(items))
+	for _, item := range items {
+		gotIDs = append(gotIDs, item.ID)
+	}
+	require.ElementsMatch(t, []string{webSession.ID, imSession.ID}, gotIDs)
+}
+
 func TestSessionRepositoryUpdateHonorsUserScope(t *testing.T) {
 	repo, db := newSessionRepositoryForTest(t)
 	ctx := context.Background()
